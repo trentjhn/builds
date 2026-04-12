@@ -11,7 +11,7 @@ Quick look at what's been built and why each matters:
 
 | System | Status | Type | Problem Solved |
 |--------|--------|------|---|
-| **Magnum Opus / /cook** | Live | Meta-Infrastructure | Building every prior system required making ~40 architecture decisions ad hoc — topology, context strategy, model selection, eval baseline — and without a workflow they get made implicitly or skipped |
+| **Magnum Opus / /cook** | Live | Meta-Infrastructure | Building systems requires making ~40 architecture decisions ad hoc (topology, context strategy, model selection, eval baseline) and without a workflow they get made implicitly or skipped |
 | **YouTube Summarizer Premium** | Production-deployed | Full-Stack AI | Long videos require watching in full to extract information; chunking-based tools lose narrative coherence |
 | **edge_lab** | Live | Trading Automation | Trading frameworks break down under real-time pressure — steps skipped, math approximated, thesis drifted |
 | **Zenkai** | Functional | Learning Platform | Good reference material doesn't create retention; needed active recall and spaced repetition for AI content |
