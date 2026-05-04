@@ -12,12 +12,16 @@ Quick look at what's been built and why each matters:
 | System | Status | Type | Problem Solved |
 |--------|--------|------|---|
 | **Magnum Opus / /cook** | Live | Meta-Infrastructure | Building systems requires making ~40 architecture decisions ad hoc (topology, context strategy, model selection, eval baseline) and without a workflow they get made implicitly or skipped |
+| **Viridian** | Live (Phases 0-2, 4 shipped; 3, 3.5 functional) | Meta-Infrastructure | Building AI systems generates a fast-moving stream of tool calls, token spend, session memory, and file diffs — but the host harness shows none of it in real time |
 | **YouTube Summarizer Premium** | Production-deployed | Full-Stack AI | Long videos require watching in full to extract information; chunking-based tools lose narrative coherence |
+| **AI Search Visibility Tracker** | Live (1 pilot baseline complete) | Production AEO Measurement | Brands are increasingly discovered through AI answer engines, but no commercial AEO tool publishes its math — the credibility ceiling is whoever builds the rigorous version first |
+| **Government Relations Intelligence Dashboard** | Live (autonomous daily cron) | Production Intelligence Pipeline | A multi-role public-affairs operator can't manually read every relevant agenda + bill calendar + board packet + PDF every morning, and off-the-shelf LLM summarization fabricates dollar figures and bill numbers |
 | **edge_lab** | Live | Trading Automation | Trading frameworks break down under real-time pressure — steps skipped, math approximated, thesis drifted |
 | **Zenkai** | Functional | Learning Platform | Good reference material doesn't create retention; needed active recall and spaced repetition for AI content |
 | **AI-Knowledgebase** | Continuously growing | Knowledge Library | AI engineering knowledge scattered across 100+ sources with no practitioner-depth synthesis that ages well |
 | **interview-prep** | Live | Job Search OS | 10+ concurrent applications across memory-less sessions; needed live-state CRM with company-specific context |
 | **mariana-interview** | Complete | Case Study Prep | Generic PM templates fail in industrial domains — wrong personas, wrong success metrics, missing physical constraints |
+| **Parking Lead-Gen Agent** | Functional | Lead Generation CLI | Out-of-home advertising sales sources local advertisers manually — Yelp + spreadsheet + phone book — for hours per asset with no audit trail of why a prospect was contacted |
 | **security-var-agent** | Functional | Recommendation Engine | VAR workflows require market-real vendor analysis, ROI modeling, and confidence scoring; manual comparison is error-prone |
 
 ---
@@ -99,7 +103,92 @@ All KB paths in the skill are anchored to a single path at the top of SKILL.md. 
 
 ---
 
-### 2. YouTube Summarizer Premium — Full-Stack AI Video Intelligence
+### 2. Viridian — Session Intelligence TUI for Claude Code
+
+**Status:** Live (Phases 0-2, 4 shipped; Phase 3 + 3.5 functional; Phases 5-6 ahead)
+**Location:** `/Users/t-rawww/Projects/viridian/`
+**Repo:** `trentjhn/viridian` (public)
+**Binary:** `vir` (single static Go binary)
+
+#### The Problem
+Building AI systems with Claude Code generates a fast-moving stream of tool calls, token spend, session memory, and file diffs — but the host harness shows none of this in real time. Meaningful introspection requires after-the-fact log spelunking. The result: you build *with* Claude Code without ever watching how it actually works on your project, and lose the chance to catch tool-routing inefficiencies, runaway token spend, or stale context being injected into the next session.
+
+#### What It Is
+A Go TUI that watches Claude Code sessions in real time via the host harness's hook system. Three Python hook scripts (PreToolUse / Stop / SessionStart) write to a shared SQLite session DB; a BubbleTea TUI reads from the same DB and renders live panels — Activity (every tool call, color-coded), Stats (tool counts, real token spend), Memory (what was carried into the current session), Diffs (before/after for Edit/Write), and an embedded PTY shell with scrollback. Sub-100ms latency from hook write to TUI render via fsnotify.
+
+#### Architecture
+
+```
+Claude Code session (any project)
+   │
+   ├─ PreToolUse hook   ──► pre_tool_use.py    ──► tool_events table
+   ├─ Stop hook         ──► stop.py            ──► session_memory table
+   └─ SessionStart hook ──► session_start.py   ──► reads memory → additionalContext JSON
+                                  │
+                          ~/.local/share/viridian/session.db (SQLite)
+                                  │
+                          fsnotify (parent dir, 30ms debounce)
+                                  │
+                          vir watch (BubbleTea TUI)
+                          ├─ Activity / Stats / Memory / Diffs panels
+                          └─ Embedded PTY shell (vt10x) with scrollback
+```
+
+Hooks write; TUI reads. The DB is the contract between them. Live updates flow over fsnotify → channel → BubbleTea Cmd → re-render. Transcript JSONL is a parallel data source for accurate per-turn token counts.
+
+#### Stack
+- Go 1.26.2, single static binary
+- `charmbracelet/bubbletea` v1.3 — TUI framework
+- `charmbracelet/lipgloss` v1.1 — styling, borders, layout
+- `charmbracelet/harmonica` — spring physics for intro animation
+- `spf13/cobra` v1.10 — CLI subcommands
+- `modernc.org/sqlite` v1.48 — pure-Go SQLite (no CGO)
+- `fsnotify/fsnotify` v1.9 — sub-100ms DB change detection
+- `creack/pty` + `hinshun/vt10x` — embedded shell + terminal emulator
+- `hexops/gotextdiff` + `alecthomas/chroma` — diff parsing + syntax highlighting
+- Python 3 stdlib (no deps) for the three hook scripts
+
+#### Key Decisions and Why They're Elegant
+
+**1. Three-hook capture surface (PreToolUse / Stop / SessionStart)**
+Each hook writes a different *kind* of fact. PreToolUse captures fine-grain intent (the tool call, before it runs). Stop captures session shape (turns, files, summary). SessionStart consumes — it doesn't write — closing the loop by injecting prior memory as `additionalContext`. Three orthogonal cuts of a session, one shared SQLite file.
+
+**2. Hooks must never raise, ever**
+The CLAUDE.md rule and the script structure both enforce it: every hook wraps `main()` in try/except, prints to stderr, exits 0. Reason: a non-zero exit on PreToolUse blocks *all* Claude Code tool execution. Treating the hook as a strictly side-effecting append-only logger is the only safe contract when you don't own the host harness.
+
+**3. fsnotify on the parent directory, filtered by filename**
+Watching the DB file directly breaks because SQLite atomically replaces files during journal cleanup, invalidating the inode. Watching the parent dir survives recreation; the loop filters `ev.Name != dbPath`. A 30ms debounce coalesces SQLite's burst (data write + journal cleanup) into a single signal. Sub-100ms perceived latency, zero idle DB reads.
+
+**4. Hook-side line-number enrichment**
+`pre_tool_use.py` finds `old_string` in the file at write time and stores `_viridian_line` in the JSON before SQLite insert. The Go diff viewer uses it to auto-center the viewport on the edit. The line is computed *once*, at the only moment the file is guaranteed to still match — not re-derived on every render.
+
+**5. SGR reset boundary fix**
+Lipgloss emits `\x1b[0m` (full SGR reset) between every styled span. That clears the background to the terminal's native color, producing a striped appearance over the styled panels. Failed approaches: per-component `BorderBackground()`, BG prefixes per span. Working fix: `fillBackground()` runs once at the output boundary and replaces every `\x1b[0m` with `\x1b[0;48;2;R;G;Bm` (reset + re-apply BG). Fix the leak at the seam, not at every span.
+
+**6. PTY scrollback via capture-and-replay**
+vt10x is fixed-size, no scrollback. Rather than swap to a different terminal lib, the `Terminal` struct keeps a raw byte capture buffer alongside the live VT. `ScrollRender` allocates a temporary larger vt10x, replays the entire capture, and slices the requested viewport. Scrollback as a pure function of the byte stream — the live VT is untouched.
+
+**7. `Update()` mutates, `View()` is pure**
+BubbleTea's `View()` runs on a value-copy of the model; mutations vanish. CLAUDE.md captures this as a gotcha after a bug where a "do once then stop" centering flag never stuck. Solution: scroll clamping (`clampShellScroll`) and one-shot anchor centering (`applyCenterScroll`) live in `Update()` only. Mutations belong on the side that's allowed to mutate.
+
+**8. Project-scoped Activity and Diffs**
+Filters `tool_events` by current working directory before rendering. Without this, Activity showed tool calls from every concurrent Claude Code session globally — useless noise. The DB stays global (one source of truth across all projects); the TUI scopes the *view*. The right cut is at read time, not write time.
+
+**9. Heuristic memory extraction first, AI extraction later**
+After studying claude-mem (59k stars), chose user-message extraction with no AI calls — messages ≥30 chars, capped at 15, truncated to 500. Storage and injection architecture are AI-ready: Stage 2 can swap in summarization without touching the schema or the hook contract. Ship the boring version first; preserve the upgrade seam.
+
+**10. Two parallel data sources: hooks (live) + JSONL transcripts (truth)**
+Hooks miss usage events and assistant text (PreToolUse only fires on tool calls). The JSONL transcript at `~/.claude/projects/*.jsonl` carries per-turn `usage` blocks with real token counts. Viridian reads both — hooks for live activity, transcripts for accurate stats / copy mode / historical diffs. Estimation stays as fallback for sessions that predate the install.
+
+**11. `vir init` as merge, not overwrite**
+Writes to `~/.claude/settings.json` by reading existing JSON, walking the `hooks` map, idempotently appending only the three hook entries it owns. Other tools' hooks survive. Re-running prints "already registered" instead of duplicating. The right primitive for a shared config file you don't own.
+
+**12. Why this matters — meta-infrastructure framing**
+Viridian sits in the same tier as Magnum Opus / `/cook`: it's a tool *about* Claude Code, not a tool *built by* Claude Code. The artifact and the harness are the same surface — you watch your AI coding sessions through a TUI you wrote in Go, using hooks the host harness exposes. Most builds in this log produce systems that do work for the user; Viridian produces visibility into the work itself, which is the layer above.
+
+---
+
+### 3. YouTube Summarizer Premium — Full-Stack AI Video Intelligence
 
 **Status:** Production-deployed and live
 **Location:** `/Users/t-rawww/Projects/youtube-summarizer-complete/`
@@ -169,7 +258,198 @@ PostgreSQL persistence + cache key versioning. Prompt version bump (e.g. v5.0 �
 
 ---
 
-### 3. edge_lab — Trading Analyst System
+### 4. AI Search Visibility Tracker
+
+**Status:** Live for one founder-led consumer-brand pilot — 30+ prompts seeded, baseline run complete across 3 active engines, methodology page + Gap Report rendering against real data. Pending: T+30 re-baseline (~30 days post-T0), Perplexity + Google AI Overview re-enable when client revenue justifies the spend.
+**Repo:** Private
+
+#### The Problem
+Brands are increasingly discovered through AI answer engines (ChatGPT, Claude, Perplexity, Gemini, Google AI Overviews) rather than classical search — but no commercial AEO tool publishes its math. Existing tools (Profound, Otterly, AthenaHQ, CrowdReply) report a single point estimate per prompt with no sample size, no confidence interval, no transparent scoring formula. The result: a category in early stages with no credibility-grounding methodology. The opportunity: build the credible measurement substrate first.
+
+#### What It Is
+A multi-engine AEO measurement tool that reports brand visibility with statistical rigor instead of vibes. Same prompt fans out to multiple AI answer engines, each engine runs N=5 (Lite) or N=10 (Standard) times, structured fields (mention rate, position, sentiment, citations, competitor mentions) are extracted via Zod-enforced LLM extraction, and a daily aggregator produces per-prompt metrics with **Wilson 95% confidence intervals** and an **AutoGEO impression-weighted GEO Score** ported from the ICLR'26 paper. The methodology page is published — the moat is the math everyone else treats as proprietary.
+
+#### Architecture
+
+```
+seed scripts ──► Postgres (Client / Keyword / Prompt + domains[] + competitor split)
+                                     │
+                                     ▼
+                       enqueueBaseline(promptId, engines, N)
+                                     │  fan-out at enqueue, not in worker
+                                     ▼
+                pg-boss queue: engine-query  (one job per promptId × engine × runNumber)
+                                     │
+                                     ▼
+                engineRegistry[engine].query(prompt)  ──► OpenAI / Anthropic / Google
+                                     │
+                                     ▼
+              Run row upsert  (responseText, engineCitations[], responseRaw Json)
+                                     │
+                                     ▼
+                   pg-boss queue: result-extraction  (separate downstream job)
+                                     │
+                                     ▼
+              extractResults() → generateObject + Zod (Claude, temperature 0)
+                                     │
+                                     ▼
+                      Result row (brandMention, position, sentiment, citations, competitors)
+                                     │
+                                     ▼
+                    Daily aggregator → Analysis row (Wilson CI, GEO, SoV) per (promptId, date)
+                                     │
+                                     ▼
+                Next.js dashboard: /clients/[slug]/{gaps, comparison, …} + /methodology
+```
+
+State is concentrated in Postgres (queue, raw responses, extractions, aggregates all in one DB). Engine adapters are interchangeable behind a single `EngineAdapter` interface; extraction is decoupled from querying so prompt revisions don't re-pay engine API costs.
+
+#### Stack
+- Next.js 16 (App Router) + React 19 + TypeScript 5
+- Prisma 7 with `@prisma/adapter-pg` driver-adapter pattern
+- PostgreSQL (one DB serves data + queue + Studio)
+- pg-boss v11 (`batchSize: 2` to stay under provider per-minute ceilings)
+- Vercel AI SDK v6 (`ai@^6`) + `@ai-sdk/{openai,anthropic,google,perplexity}@^3`
+- Models: `gpt-5` + `openai.tools.webSearch`, `claude-opus-4-7` + `anthropic.tools.webSearch_20250305`, Gemini via `@ai-sdk/google`; extraction on `claude-sonnet-4-6`
+- 3 engines active in v1; Perplexity + Google AI Overview (via `serpapi@^2`) scaffolded but disabled in `ALL_ENGINES`
+- Zod 3 for extraction schema + env validation
+- Tailwind 3 + shadcn/ui + Recharts 2 + lucide-react
+
+#### Key Decisions and Why They're Elegant
+
+**1. Wilson 95% CI over normal approximation**
+In the N=5 / N=10 regime with proportions often near 0% or 100%, the textbook normal approximation produces intervals like `[-0.12, 0.32]` — lower bound below zero is mathematically nonsense. Wilson stays bounded in `[0,1]` by construction and has better small-sample coverage (Brown/Cai/DasGupta 2001). 15-line hand port — no dependency. Prevents reporting nonsense lower bounds in the exact regime the tool runs in.
+
+**2. Hand-port of AutoGEO impression formula**
+`lib/analysis/geo-score.ts` is a faithful port of `cxcscmu/AutoGEO/.../geo_score.py` — word count × position decay (`exp(-i/(T-1))`) × split-by-citations-per-sentence. The first scaffold contained an invented heuristic; verification against the published source caught it. Citing AutoGEO (ICLR'26) grounds the math in literature instead of internal heuristic. Prevents the "looks rigorous but isn't" failure mode that kills credibility on first pushback.
+
+**3. N=5 Lite / N=10 Standard sample-size discipline**
+Same prompt to the same engine produces different responses; multi-run sampling quantifies the variance instead of pretending it doesn't exist. Even at N=5 the methodology is 5x more rigorous than competitors who report a single point estimate, and the ladder gives a clean upgrade path for retainer work.
+
+**4. `temperature: 0` for extraction**
+Engine queries are non-deterministic by nature; the extraction layer that pulls structured fields out of those responses must not add more variance on top. This is what makes "re-run extraction after a prompt tweak" safe. Prevents drift on identical inputs across re-extractions.
+
+**5. Zod-enforced extraction schema via `generateObject`**
+Structural enforcement at the LLM boundary; the model cannot return a shape it wasn't asked for. Hallucinated fields drop on the floor instead of polluting the `Result` table. The schema doubles as documentation of every field the dashboard expects.
+
+**6. 3 engines active in v1, 2 deferred (cost discipline)**
+Perplexity ($50 prepaid minimum) and Google AI Overview via SerpAPI ($75/month subscription) are scaffolded fully in `lib/engines/` but disabled at the orchestration layer. Methodology page tells the truth about it. Re-enable = remove a comment, not a refactor. Prevents pre-revenue burn while keeping the v2 path one line away.
+
+**7. `Client.domains String[]` for AutoGEO brand-share aggregation**
+Brand-level GEO Score requires knowing which cited URLs belong to the client. `domains` is a substring-match allow-list per client (subdomains, retailer pages, social profiles). Schema add was operator-gated and shipped with `@default([])` so prior seeds stayed compatible. Without this column, brand-level GEO is ungrounded.
+
+**8. `peerCompetitors` vs `incumbents` split**
+Two-bucket competitor model. Incumbents (the dominators in the category) saturate every prompt and tell you nothing about positioning; peers are the actual share-of-voice comparison group. The Gap Report ranks by `peerMentionRate × (1 − clientMentionRate)` — high peer activity with low client presence means the gap is closeable. A flat competitor list would surface only "the giants always win" non-insights.
+
+**9. One pg-boss job per `(promptId, engine, runNumber)` — fan-out at enqueue, not in worker**
+Failed runs retry independently; one slow engine doesn't block the others. `@@unique([promptId, engine, runNumber])` paired with worker upsert makes pg-boss batch-retry semantics safe (a re-delivered job becomes an idempotent no-op).
+
+**10. Extraction as a separate downstream job**
+A failed extraction must never lose the raw response. Decoupling extraction from the engine call means a prompt-engineering iteration re-runs extraction without re-paying the API call. `Run.responseRaw Json` is the forensic substrate that makes the escape hatch real.
+
+**11. Engine citations persisted to a dedicated `engineCitations String[]` column**
+Mid-flight bug surfaced: `JSON.stringify` drops Vercel AI SDK's getter-based `result.sources`, so reading citations off `responseRaw` returns nothing. Fix: extract `citations` at adapter access time and persist to its own column. Schema-level discipline catching SDK serialization quirks.
+
+**12. `result.sources` shape pre-flight verified**
+The integration field is `sourceType: 'url'`, not `type: 'url'` — caught before it cost a baseline. Same reflex caught `gpt-5 + openai.tools.webSearch({})` as the correct setup vs falling back to `gpt-4o`. Pre-flight verification on every external integration is a standing reflex captured in the project's CLAUDE.md.
+
+**13. `Prompt.category` flexible string vs strict enum**
+Vertical-specific extensions (consumer brand: "occasion / pairing / anti-celebrity"; legal: "compliance / intake / discovery") get added at seed time without a migration. `Engine` and `Sentiment` stay strict because they're universal across clients. Right thing strict, right thing flexible.
+
+**14. Methodology page as the credibility wedge**
+Every competitor treats their math as proprietary. Publishing it at `/methodology` (Wilson formula, AutoGEO citation, sample-size rationale, what's deferred to v2 and why) inverts the trust dynamic. The page is shippable in front of clients during engagements — the moat is the thing you'd think you should hide.
+
+**15. Premortem applied → adjustments visible in commit log**
+A formal premortem on the pilot client meeting surfaced four high-stakes-low-likelihood failure modes (connector misalignment, existing-vendor block, win-meeting-lose-engagement, methodology defense). Output rewrote the deliverable around the moat instead of around the metrics. Premortem isn't decoration; it changed the artifact.
+
+**16. Cost ceiling enforced via env var**
+`COST_CEILING_USD` validated at boot in `lib/env.ts` (default $20, baseline back-of-envelope $7.50). Scheduler aborts if projected spend exceeds. A single bad prompt-bank can't burn the budget silently.
+
+---
+
+### 5. Government Relations Intelligence Dashboard
+
+**Status:** Live and autonomous. GitHub Actions cron fires at 6:30am PT daily. Pipeline is fully unattended; the operator is a passive reviewer behind a Cloudflare Access whitelist. Two repos: a public pipeline and a private dashboard repo (which also holds state). Cloudflare Pages auto-deploys on push, ~90s lag.
+**Use case archetype:** A daily, pre-7am governance briefing for a multi-role public-affairs operator (government relations + community-college trusteeship + traffic commission). Five public meeting and legislation sources are scraped, diffed against yesterday, summarized through a verbatim + NER grounding gate, and published as a static dashboard before the operator opens their laptop — no inbox, no copy-paste, no manual triage.
+
+#### The Problem
+A working public-affairs operator with three concurrent roles can't manually read every relevant agenda, bill calendar, board packet, and PDF every morning. Off-the-shelf LLM summarization is too risky — fabricated dollar figures or invented bill numbers break trust with internal stakeholders the moment they're caught once. The need: a daily intelligence pipeline that's both comprehensive (multi-source) and grounded (every fact provably extracted from primary text).
+
+#### What It Is
+An autonomous overnight pipeline that scrapes five government and legislative sources, diffs against yesterday's snapshot, summarizes new items through a two-layer hallucination gate (verbatim substring + spaCy NER), and renders a static HTML dashboard for the operator to skim before 7am. Five-source coverage: Playwright/Chromium for JS-rendered transit and city government sites, `pdfplumber` for PDF agendas with page-marker citation deep-links, `pyopenstates` for the state legislature API.
+
+#### Architecture
+
+```
+GitHub Actions cron (6:30am PT)
+  → pull_state (clone dashboard repo, read last_seen.json + history.json + items_by_day.json)
+  → 5 scrapers in parallel:
+       Playwright/Chromium  (3 JS-rendered sources)
+       requests + pdfplumber (1 source)
+       pyopenstates API     (state legislature)
+  → content_hash diff vs last_seen.json → only NEW items survive
+  → Gemini Flash 2.5 summarizer (one call per source, prompt-injection isolated)
+  → verbatim-substring gate + spaCy NER gate → drops hallucinated items
+  → Jinja2 renderer (two-pane unified feed; pin/save via localStorage)
+  → publisher: atomic single-commit push (HTML + state) to dashboard repo
+  → Cloudflare Pages auto-deploys
+  → SMTP alerts on quiet-everything OR push-fail OR multi-source degraded
+```
+
+#### Stack
+- Python 3.12 (CI parity) / 3.14 (local). `requirements-lock.txt` for reproducible CI.
+- GitHub Actions for cron + concurrency control (`cancel-in-progress: false`)
+- Playwright + headless Chromium for JS-rendered sources
+- pdfplumber (10MB cap, 30s streaming timeout, alnum + stopword readability heuristic)
+- pyopenstates >=2.3.1 for state legislature (free tier 10 req/min)
+- google-generativeai (Gemini 2.5 Flash primary, Gemini 1.5 Flash fallback, raw-excerpt fallback below that)
+- spaCy 3.8 + en_core_web_sm for NER grounding
+- Jinja2 with autoescape; vanilla JS pin/save module (no frontend framework)
+- GitPython for commit/push operations
+- Cloudflare Pages + Cloudflare Access (Google OAuth) for delivery + auth
+- SMTP alerts via Zoho (app-specific password)
+
+#### Key Decisions and Why They're Elegant
+
+**1. State lives in a separate repo, not the pipeline repo**
+`last_seen.json`, `history.json`, `items_by_day.json` and the rendered `index.html` all live in the private dashboard repo. The pipeline repo is stateless. This means the pipeline can be made public for portfolio purposes without leaking who the operator monitors, and dashboard rollback is `git revert` not state surgery.
+
+**2. Two-layer hallucination gate (verbatim substring + spaCy NER)**
+The model is forbidden from authoring the fact sentence. `display_text` must be a verbatim 80–500-char span from `raw_text`, AND every named entity in the model's `headline` must appear in that span (with ±1% tolerance for `MONEY` because rounding is legitimate). Bill numbers and contract numbers are extracted via regex on top of NER because spaCy mis-labels `LAW`. Fabricated dollar figures and bogus bill numbers are structurally impossible.
+
+**3. Allow-list for the operator's own role-set in `why_relevant`**
+The NER gate would reject "this matters to a transit-agency GRM" because role names don't appear in the verbatim excerpt. A small allow-list of role/jurisdiction entities (the operator's three professional hats) lets relevance commentary mention them without faking new facts. Separates "fact must be grounded" from "context can reference role."
+
+**4. Gemini safety filters set to BLOCK_NONE for governance**
+Default consumer-safety filters BLOCK on crime, drugs, housing, public-health mentions, which kills governance summaries (police contracts, homeless services, opioid settlement). All four categories explicitly set to `BLOCK_NONE`. Without this the system would silently false-positive-block half its real content.
+
+**5. HTML body as a content floor under PDFs**
+Source PDFs are growing past the 10MB cap. The scraper always extracts the detail page body text first (capped at 30KB) so the summarizer has *something* to ground against even when every PDF fails. PDF text layers on top when extraction succeeds. The system degrades gracefully from rich → metadata-only instead of empty.
+
+**6. PDF page markers for citation deep-links**
+Scrapers inject `=== [PDF N p.P] ===` into raw_text before each page. The summarizer prompt reads them to emit `source_page`. The renderer stitches `url#page=N`. Markers are stripped from display copy AFTER the grounding substring check so verification sees the original characters on both sides. The reader clicks the citation and lands on the exact PDF page.
+
+**7. Per-source one-call-per-summary prompt-injection isolation**
+Five sources, five separate Gemini calls. A malicious PDF in one source can't contaminate items in another. The renderer also rejects model-emitted `item_url` values with non-http schemes (`javascript:`, `data:`) — so even if injection succeeds, the link can't escape.
+
+**8. Same-day idempotence with `--force` escape hatch**
+`_already_ran_today` reads `history[0]` and exits 0 if today is already covered. A failed-then-re-run pattern bypasses with `--force`. `save_state` upserts (drops any existing same-date entry before prepending) so multiple force-runs don't pile up. The dashboard is repeatable without losing yesterday.
+
+**9. Rolling 14-day item store with most-recent-anchor preservation**
+`items_by_day.json` keeps 14 days, renderer uses last 7. When a source has no in-window content (some sources meet monthly), the truncator preserves the single most-recent older content-bearing entry as an anchor, so empty-state UX shows "Most recent: [date] — [brief]" instead of "No items yet." Solves a real UX failure where quarterly-cadence sources looked broken.
+
+**10. PAT scrubbing on every git error path**
+Every `git.GitCommandError` echoes the full argv on failure, including the `https://<token>@github.com/...` URL. State manager and publisher both wrap git calls in `_redact()` that scrubs both the raw token AND its base64 form (because Basic-auth headers also leak to logs). After clone, `set_url()` rewrites `.git/config` to remove the token — auth rides per-command `http.extraheader` instead of being persisted.
+
+**11. `_pre_summarized` items bypass the diff**
+Some sources publish meeting *schedule skeletons* with no agenda yet. Their `content_hash` is stable across runs; normal diff logic would mark them "already seen" forever. The diff explicitly passes them through regardless of `last_seen` membership, with renderer-side dedup via `items_by_day.json`. Calendar metadata stays visible without polluting the news diff.
+
+**12. Three-state source semantics on the dashboard**
+`active` (scraped + survived NER), `quiet` (scraped ok, zero new), `degraded` (scrape exception OR all items dropped by gate OR fallback used). The operator can tell "nothing happened" from "the system is broken" at a glance. Multi-source degraded triggers an SMTP alert even though the dashboard still ships — quality off, not down.
+
+---
+
+### 6. edge_lab — Trading Analyst System
 
 **Status:** Live
 **Location:** `/Users/t-rawww/edge_lab/`
@@ -273,7 +553,7 @@ Built a direct X API scraper using `requests` + session cookies (AUTH_TOKEN + ct
 
 ---
 
-### 4. Zenkai — Personalized AI Learning App
+### 7. Zenkai — Personalized AI Learning App
 
 **Status:** Functional — end-to-end working for Module 2. 8 modules remaining for full content coverage.
 **Repo:** `trentjhn/zenkai`
@@ -296,7 +576,7 @@ A local web app that turns this knowledge base into an interactive learning expe
 
 ---
 
-### 5. AI-Knowledgebase — Personal Knowledge Library
+### 8. AI-Knowledgebase — Personal Knowledge Library
 
 **Status:** Live (continuously growing)
 **Location:** `/Users/t-rawww/AI-Knowledgebase/`
@@ -388,7 +668,7 @@ Infrastructure that feeds the KB. Problem: finding high-signal papers manually i
 
 ---
 
-### 6. interview-prep — Job Search OS
+### 9. interview-prep — Job Search OS
 
 **Status:** Live
 **Location:** `/Users/t-rawww/interview-prep/`
@@ -446,7 +726,7 @@ The CLAUDE.md has explicit language rules: no em dashes, no filler phrases, don'
 
 ---
 
-### 7. mariana-interview — Case Study Preparation System
+### 10. mariana-interview — Case Study Preparation System
 
 **Status:** Complete (used for Round 2 interview)
 **Location:** `/Users/t-rawww/mariana-interview/`
@@ -509,7 +789,80 @@ Every feature analysis forces: systems first (inputs→process→outputs→feedb
 
 ---
 
-### 8. security-var-agent — Value-Added Reseller Recommendation Engine
+### 11. Parking Lead-Gen Agent
+
+**Status:** Functional and actively iterated. Real cost data: 14 runs in `state/spend-ledger.jsonl` with measured costs ranging $0.024–$0.20 per run depending on radius and category breadth.
+**Repo:** Private
+
+#### The Problem
+Out-of-home advertising sales teams source local advertisers manually — Yelp, Google Maps, a spreadsheet, a phone book. The work is geographic search + quality filtering + contact enrichment + fit scoring, repeated for every parking garage or transit hub on the asset list. Hours per asset, low yield, no audit trail of why a given prospect was contacted. The opportunity: collapse the loop into a single CLI that returns a contact-enriched ranked list for ten cents.
+
+#### What It Is
+A Python CLI that takes a parking-garage address and returns a ranked, contact-enriched list of nearby businesses who are strong candidates to place ads in that garage. One run = one CSV in `output/{YYYY-MM-DD_HHMMSS}_{address-slug}/leads.csv`. Includes fit-score rationale, contact (name + title + quality) where available, and a fallback LinkedIn search URL when email enrichment fails. Audit-friendly by design: every stage persists JSON to disk, every run appends to a spend ledger, every output CSV is timestamped and addressable for diff.
+
+#### Architecture
+
+```
+address
+  → prospector.py     Google Places API (New) + Geocoding + haversine    → data/raw_businesses.json
+  → filters.py        rating floor + chain blocklist + airport-terminal reject
+  → enricher.py       website scrape (BeautifulSoup) + Hunter.io domain search → data/enriched_businesses.json
+  → qualifier.py      Claude Haiku 4.5 tool_use scoring (5-worker pool, rate-limit-aware retry) → data/qualified_leads.json
+  → exporter.py       contact-forward CSV + run summary (cost, runtime, Hunter quota, top-3 preview)
+                      → output/{YYYY-MM-DD_HHMMSS}_{address-slug}/leads.csv
+  → ledger.py         append per-run row to state/spend-ledger.jsonl
+```
+
+Single-threaded Python orchestration with parallelism only inside the qualifier stage. Every stage persists JSON to `data/` so any stage can be replayed via `--resume-from {prospect,enrich,qualify}` without re-hitting upstream APIs. State (Hunter cache, Hunter usage counter, spend ledger) lives in a separate `state/` directory that survives `make clean`.
+
+#### Stack
+- Python 3.11+ (Makefile enforces via `check-python` target)
+- **APIs:** Google Places API (New) `places:searchNearby` (legacy endpoint banned in CLAUDE.md), Google Geocoding, Hunter.io domain search, Anthropic Claude Haiku 4.5 with native `tool_use` structured output and ephemeral prompt caching
+- **Libraries:** `anthropic==0.96.0`, `requests==2.33.1`, `beautifulsoup4==4.14.3`, `python-dotenv==1.2.2`; `pytest==9.0.3` + `pytest-mock` + `responses` for HTTP mocking
+- **Makefile targets:** `install`, `setup` (interactive `.env` wizard), `run ADDRESS=...`, `dry`, `test`, `clean` (preserves `state/`), `budget-report` (last-7-day spend from JSONL), `ship` (git archive zip in `dist/`)
+- 13 test modules including `test_eval.py` (offline eval fixture) and `test_integration.py` (full pipeline with mocked Places + tool_use)
+
+#### Key Decisions and Why They're Elegant
+
+**1. Anti-hallucination contract as Rule 1**
+Claude never recalls business facts from training data, every fact is injected as structured JSON from Places or Hunter. The qualifier user message is `json.dumps({garage:..., business:...})` with only name, address, distance, category, rating — no review text, no description that would invite the model to fill in the blank. Tool_use schema enforces output shape (`tier`, `fit_score`, `score_rationale`) so there's nothing to parse, nothing to hallucinate.
+
+**2. Interim JSON as source of truth between stages**
+Every stage reads from disk and writes to disk. `--resume-from` is therefore a real product feature, not a debug toggle. Tuning a min-score? Don't re-pay Places + Hunter; replay from `qualified_leads.json`. Same context-as-files pattern from edge_lab applied to a one-shot pipeline.
+
+**3. `state/` separated from `data/`**
+`data/` holds replayable interim JSON (gitignored, wipeable). `state/` holds cross-run persistent assets the operator should never lose: Hunter monthly-quota counter, Hunter domain cache, spend ledger. `make clean` wipes the first and protects the second by directory boundary, not by an `.gitignore` exception that's easy to forget.
+
+**4. Dry-run fixture mode (`make dry`)**
+Demos and onboarding cost zero dollars and zero network. The dry path loads `tests/fixtures/dry_run_businesses.json`, skips Hunter and Anthropic entirely, and still exercises the filter → checkpoint → export → summary path so a new operator sees the real CSV shape before they pay for keys. `--dry-run` takes precedence over `--resume-from` with a logged warning instead of a silent override.
+
+**5. Three-method email extraction with explicit fallbacks**
+Enricher tries: HTML scrape → JS-unicode-unescape pass (catches `>owner@…` from React/Next.js sites) → Hunter domain search. Junk filter rejects `noreply@`, blocklisted demo domains, and DIY hosting platforms (`wixsite.com`, `squarespace.com`) where Hunter would query the platform instead of the business. When all three fail, a Google `linkedin_search` URL pre-baked from business name + city ships in the CSV — a free fallback that costs nothing and the operator clicks once.
+
+**6. Three contact columns collapsed to one cell**
+`_format_contact` renders `Jane Doe — Director of Marketing (senior_manager)` in a single `contact` cell. The dataclass still carries `contact_name`, `contact_title`, `contact_quality` separately so the sort tiebreaker (reachable leads rank higher on equal fit_score) and `--resume-from` replay still work. Collapse happens at the export boundary, not the model.
+
+**7. Scoring cluster surfaced together in the CSV**
+`rating`, `review_count`, `fit_score`, `score_rationale` sit adjacent in `CSV_FIELDS`. Operator scanning the list can sanity-check Claude's score against the underlying signal without flipping between sheets. Came from TDD (RED test first, then GREEN feat), not afterthought.
+
+**8. Timestamped + slugged output directory**
+`output/{YYYY-MM-DD_HHMMSS}_{address-slug}/leads.csv`. Earlier date-only naming silently overwrote prior CSVs on same-day re-runs, defeating the whole point of parameter-tuning. The `HHMMSS` suffix makes every run addressable for diff. Slug uses NFKD + combining-mark strip so accented Latin (`Café`) maps to ASCII (`cafe`) instead of collapsing to `unnamed`.
+
+**9. Rate-limit-aware retry with two regimes**
+`RateLimitError` honors the server's `retry-after` header (clamped to [1, 60]s, defaults to 30s when absent), up to 3 retries. Non-rate-limit exceptions get one retry at 2s. The split came from a real failure where a fixed 2s backoff landed both retry attempts in the same throttle window. Failed leads surface as `tier=ERROR` rows rather than silent drops.
+
+**10. Two-layer budget guard**
+Pre-flight: project tokens × leads, abort before any Claude call if over `--max-cost`. Mid-run: each worker checks `cost_tracker.total_usd >= max_cost` before its own call, and over-budget leads exit as `tier=BUDGET` rows. Wrapped by safety caps (`--max-cost` ≤ $5, `--radius` ≤ 5mi without `--allow-expensive-run`) and an interactive confirm for permissive-everything footguns. This is the spend discipline that lets the README advertise "$0.05–$0.15/run" with a straight face.
+
+**11. `--top-n 50` default with full pool retained in checkpoint**
+Operator-facing CSV is capped at 50 rows so the downstream marketing operator opens a tight list, not a long tail. Truncation happens *after* the qualified-leads checkpoint write, so re-exporting with a different cap from the same `data/qualified_leads.json` is free. Negative values rejected explicitly — Python's negative-slice semantics would silently mean "all but the last N".
+
+**12. CSV formula-injection guard at export boundary**
+`_csv_safe` prefixes any cell starting with `=`, `+`, `-`, `@`, `\t`, `\r` with a single quote so Excel/Numbers/Sheets render literal text instead of executing a formula. RFC 4180 is silent on this; it's a spreadsheet UX hazard, so the fix lives where CSV meets spreadsheet, not in the model layer. UTF-8 BOM (`utf-8-sig`) added so Windows Excel auto-detects encoding.
+
+---
+
+### 12. security-var-agent — Value-Added Reseller Recommendation Engine
 
 **Status:** Functional (reached solid state, business case closed)
 **Location:** `/Users/t-rawww/AI-Agent-Project/`
@@ -557,7 +910,7 @@ Jest coverage for service logic, recommendation scoring, ROI calculations, and c
 
 ## What These Systems Demonstrate
 
-Collectively, these eight systems (plus ArXiv sourcing infrastructure) demonstrate depth across the full AI engineering stack:
+Collectively, these twelve systems (plus ArXiv sourcing infrastructure) demonstrate depth across the full AI engineering stack:
 
 **Full-Stack Capability**: From production deployment (YouTube Summarizer), full-stack architecture (Zenkai), to real-time automation (edge_lab). Not just backend or frontend — end-to-end product thinking.
 
