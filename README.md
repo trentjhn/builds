@@ -11,18 +11,18 @@ Quick look at what's been built and why each matters:
 
 | System | Status | Type | Problem Solved |
 |--------|--------|------|---|
-| **Magnum Opus / /cook** | Live | Meta-Infrastructure | Building systems requires making ~40 architecture decisions ad hoc (topology, context strategy, model selection, eval baseline) and without a workflow they get made implicitly or skipped |
-| **Viridian** | Live (Phases 0-2, 4 shipped; 3, 3.5 functional) | Meta-Infrastructure | Building AI systems generates a fast-moving stream of tool calls, token spend, session memory, and file diffs — but the host harness shows none of it in real time |
-| **YouTube Summarizer Premium** | Production-deployed | Full-Stack AI | Long videos require watching in full to extract information; chunking-based tools lose narrative coherence |
-| **AI Search Visibility Tracker** | Live (1 pilot baseline complete) | Production AEO Measurement | Brands are increasingly discovered through AI answer engines, but no commercial AEO tool publishes its math — the credibility ceiling is whoever builds the rigorous version first |
-| **Government Relations Intelligence Dashboard** | Live (autonomous daily cron) | Production Intelligence Pipeline | A multi-role public-affairs operator can't manually read every relevant agenda + bill calendar + board packet + PDF every morning, and off-the-shelf LLM summarization fabricates dollar figures and bill numbers |
-| **edge_lab** | Live | Trading Automation | Trading frameworks break down under real-time pressure — steps skipped, math approximated, thesis drifted |
-| **Zenkai** | Functional | Learning Platform | Good reference material doesn't create retention; needed active recall and spaced repetition for AI content |
-| **AI-Knowledgebase** | Continuously growing | Knowledge Library | AI engineering knowledge scattered across 100+ sources with no practitioner-depth synthesis that ages well |
-| **interview-prep** | Live | Job Search OS | 10+ concurrent applications across memory-less sessions; needed live-state CRM with company-specific context |
-| **mariana-interview** | Complete | Case Study Prep | Generic PM templates fail in industrial domains — wrong personas, wrong success metrics, missing physical constraints |
-| **Parking Lead-Gen Agent** | Functional | Lead Generation CLI | Out-of-home advertising sales sources local advertisers manually — Yelp + spreadsheet + phone book — for hours per asset with no audit trail of why a prospect was contacted |
-| **security-var-agent** | Functional | Recommendation Engine | VAR workflows require market-real vendor analysis, ROI modeling, and confidence scoring; manual comparison is error-prone |
+| **[Magnum Opus / /cook](#1-magnum-opus--the-cook-project-scaffold-system)** | Live | Meta-Infrastructure | Building systems requires making ~40 architecture decisions ad hoc (topology, context strategy, model selection, eval baseline) and without a workflow they get made implicitly or skipped |
+| **[Viridian](#2-viridian--session-intelligence-tui-for-claude-code)** | Live (Phases 0-2, 4 shipped; 3, 3.5 functional) | Meta-Infrastructure | Building AI systems generates a fast-moving stream of tool calls, token spend, session memory, and file diffs — but the host harness shows none of it in real time |
+| **[YouTube Summarizer Premium](#3-youtube-summarizer-premium--full-stack-ai-video-intelligence)** | Production-deployed | Full-Stack AI | Long videos require watching in full to extract information; chunking-based tools lose narrative coherence |
+| **[AI Search Visibility Tracker](#4-ai-search-visibility-tracker)** | Live (1 pilot baseline complete) | Production AEO Measurement | Brands are increasingly discovered through AI answer engines, but no commercial AEO tool publishes its math — the credibility ceiling is whoever builds the rigorous version first |
+| **[Government Relations Intelligence Dashboard](#5-government-relations-intelligence-dashboard)** | Live (autonomous daily cron) | Production Intelligence Pipeline | A multi-role public-affairs operator can't manually read every relevant agenda + bill calendar + board packet + PDF every morning, and off-the-shelf LLM summarization fabricates dollar figures and bill numbers |
+| **[edge_lab](#6-edge_lab--trading-analyst-system)** | Live | Trading Automation | Trading frameworks break down under real-time pressure — steps skipped, math approximated, thesis drifted |
+| **[Zenkai](#7-zenkai--personalized-ai-learning-app)** | Functional | Learning Platform | Good reference material doesn't create retention; needed active recall and spaced repetition for AI content |
+| **[AI-Knowledgebase](#8-ai-knowledgebase--personal-knowledge-library)** | Continuously growing | Knowledge Library | AI engineering knowledge scattered across 100+ sources with no practitioner-depth synthesis that ages well |
+| **[interview-prep](#9-interview-prep--job-search-os)** | Live | Job Search OS | 10+ concurrent applications across memory-less sessions; needed live-state CRM with company-specific context |
+| **[mariana-interview](#10-mariana-interview--case-study-preparation-system)** | Complete | Case Study Prep | Generic PM templates fail in industrial domains — wrong personas, wrong success metrics, missing physical constraints |
+| **[Parking Lead-Gen Agent](#11-parking-lead-gen-agent)** | Functional | Lead Generation CLI | Out-of-home advertising sales sources local advertisers manually — Yelp + spreadsheet + phone book — for hours per asset with no audit trail of why a prospect was contacted |
+| **[security-var-agent](#12-security-var-agent--value-added-reseller-recommendation-engine)** | Functional | Recommendation Engine | VAR workflows require market-real vendor analysis, ROI modeling, and confidence scoring; manual comparison is error-prone |
 
 ---
 
