@@ -20,7 +20,7 @@ Quick look at what's been built and why each matters:
 | **[Zenkai](#7-zenkai--personalized-ai-learning-app)** | Functional | Learning Platform | Good reference material doesn't create retention; needed active recall and spaced repetition for AI content |
 | **[AI-Knowledgebase](#8-ai-knowledgebase--personal-knowledge-library)** | Continuously growing | Knowledge Library | AI engineering knowledge scattered across 100+ sources with no practitioner-depth synthesis that ages well |
 | **[interview-prep](#9-interview-prep--job-search-os)** | Live | Job Search OS | 10+ concurrent applications across memory-less sessions; needed live-state CRM with company-specific context |
-| **[mariana-interview](#10-mariana-interview--case-study-preparation-system)** | Complete | Case Study Prep | Generic PM templates fail in industrial domains — wrong personas, wrong success metrics, missing physical constraints |
+| **[Domain-Specialized PRD System](#10-domain-specialized-prd-generation-system)** | Complete | PRD Generation | Generic PM templates fail in industrial domains: wrong personas, wrong success metrics, missing physical constraints |
 | **[Parking Lead-Gen Agent](#11-parking-lead-gen-agent)** | Functional | Lead Generation CLI | Out-of-home advertising sales sources local advertisers manually — Yelp + spreadsheet + phone book — for hours per asset with no audit trail of why a prospect was contacted |
 | **[security-var-agent](#12-security-var-agent--value-added-reseller-recommendation-engine)** | Functional | Recommendation Engine | VAR workflows require market-real vendor analysis, ROI modeling, and confidence scoring; manual comparison is error-prone |
 
@@ -726,34 +726,32 @@ The CLAUDE.md has explicit language rules: no em dashes, no filler phrases, don'
 
 ---
 
-### 10. mariana-interview — Case Study Preparation System
+### 10. Domain-Specialized PRD Generation System
 
-**Status:** Complete (used for Round 2 interview)
-**Location:** `/Users/t-rawww/mariana-interview/`
-**Config:** `CLAUDE.md`
+**Status:** Complete
+**Type:** Local Claude Code project, config-as-code via `CLAUDE.md`
 
 #### The Problem
 Generic PM templates solve the wrong problem in industrial domains. A standard PRD template optimizes for DAU/MAU, but in mining software you measure recovery rate and cost per ton. It assumes users are individual product managers, but plant operators and process engineers have different pain points. It ignores physical constraints (ore composition, flotation chemistry, equipment specs) that drive every technical decision. Using a generic template in a domain-specific case study produces a PRD that *looks* professional but solves the wrong problem at every section.
 
 #### What It Is
-A purpose-built preparation environment for the Mariana Minerals Round 2 collaborative PRD case study. Not generic interview prep — purpose-built for a specific 60-minute interview with a specific company in a specific domain (industrial mining software).
+A purpose-built PRD generation environment for a specialized industrial domain (mining and minerals-processing software). Not a generic PM template: it enforces domain-correct framing, terminology, and physical constraints so the output solves the right problem at every section instead of looking professional while missing the domain.
 
 #### Architecture
 
 ```
-mariana-interview/
+prd-system/
 ├── CLAUDE.md               ← Behavioral contract + language rules
-├── QUICKREF.md             ← Fast reference for session
-├── interviewer-PREP-ONLY.md ← Notes on Sam Sperling
+├── QUICKREF.md             ← Fast reference for a working session
 ├── context/
-│   ├── company.md          ← PlantOS, MineOS, CapitalProjectOS: personas, metrics, tensions
+│   ├── company.md          ← product lines, personas, metrics, tensions
 │   └── glossary.md         ← Industrial terminology (SX-EW, flotation, RFI, EPCC, P&ID...)
 ├── ai-reference/
 │   └── ai-pm-framing.md    ← Load only when prompt involves AI/ML explicitly
 ├── templates/
-│   └── prd-mariana.md      ← Custom PRD template (NOT generic PM template)
+│   └── prd-template.md     ← Custom domain PRD template (NOT generic PM template)
 └── output/
-    ├── PRD-AutomatedBidEvaluation.md    ← Produced during session
+    ├── PRD-AutomatedBidEvaluation.md    ← Produced during a session
     └── PreMortem-AutomatedBidEvaluation.md
 ```
 
@@ -769,20 +767,20 @@ DAU/MAU     → recovery rate / cost per ton / schedule variance
 ```
 This forces the agent to sound like an industrial PM, not a consumer tech PM. The domain framing is enforced at the system level.
 
-**2. 3-phase session workflow mirroring the interview**
-The CLAUDE.md maps directly to the interview format:
-- **Phase 1 (10 min):** Frame — which product, primary persona, core tension, biggest constraint
-- **Phase 2 (35 min):** `/prd` command — reasons first, asks clarifying questions, builds using Mariana template
-- **Phase 3 (10 min):** `/premortem` command — Tigers (real risks), Paper Tigers (overblown), Elephants (unspoken)
+**2. 3-phase working session: frame, build, stress-test**
+The CLAUDE.md drives a timeboxed PRD session:
+- **Phase 1, Frame:** which product, primary persona, core tension, biggest constraint
+- **Phase 2, Build:** `/prd` command, reasons first, asks clarifying questions, builds using the domain template
+- **Phase 3, Stress-test:** `/premortem` command, Tigers (real risks), Paper Tigers (overblown), Elephants (unspoken)
 
 **3. Conditional context loading**
 `ai-pm-framing.md` is loaded **only** when the prompt involves AI/ML explicitly. Domain-specific context on demand — not always loaded. Keeps the context window efficient.
 
 **4. Output folder**
-Session outputs saved to `output/`. The PRD and PreMortem are persistent artifacts — can review after the interview and learn from them.
+Session outputs saved to `output/`. The PRD and PreMortem are persistent artifacts, reviewable and reusable after the session.
 
 **5. "Fill structure, not words" principle**
-The CLAUDE.md frames the agent role explicitly: surface structure and risks, not replace PM judgment. After generating any section, offer 1-2 questions to bring back to the interviewer. Keeps the human's reasoning primary.
+The CLAUDE.md frames the agent role explicitly: surface structure and risks, not replace PM judgment. After generating any section, it offers 1-2 questions for the human to take back to stakeholders. Keeps the human's reasoning primary.
 
 **6. Thinking framework baked in**
 Every feature analysis forces: systems first (inputs→process→outputs→feedback), costs always (capital/operating/time/risk), three different people (who approves, who uses, who gets fired). Physical constraints named — never ignored.
@@ -964,12 +962,12 @@ These patterns appear across multiple systems. Worth recognizing as a personal m
 
 | Pattern | Systems | What It Solves |
 |---|---|---|
-| **Context as files** | edge_lab, interview-prep, mariana-interview, KB | Session continuity without chat memory dependency |
+| **Context as files** | edge_lab, interview-prep, PRD system, KB | Session continuity without chat memory dependency |
 | **Behavioral contract (CLAUDE.md)** | 7 of 8 systems (all except VAR Agent) | Consistent agent behavior across sessions, no re-explaining |
 | **Dual AI portability** | edge_lab, interview-prep | Claude↔Gemini handoff with zero behavior drift |
-| **Conditional context loading** | YouTube Summarizer, mariana-interview, edge_lab | Load domain context on-demand — keep context window efficient |
-| **Custom language constraints** | mariana-interview, interview-prep | Force domain-appropriate vocabulary at the system level |
-| **Structured output folders** | mariana-interview, edge_lab (journal/), YouTube Summarizer | Persistent artifacts from sessions, not lost to chat history |
+| **Conditional context loading** | YouTube Summarizer, PRD system, edge_lab | Load domain context on-demand — keep context window efficient |
+| **Custom language constraints** | PRD system, interview-prep | Force domain-appropriate vocabulary at the system level |
+| **Structured output folders** | PRD system, edge_lab (journal/), YouTube Summarizer | Persistent artifacts from sessions, not lost to chat history |
 | **Non-interactive scripts** | edge_lab, YouTube Summarizer | Inline calculation/processing during workflow, not as a separate step |
 | **Git as persistence layer** | edge_lab, interview-prep, KB, Zenkai | Version-controlled state — history is automatic |
 | **Distillation over aggregation** | KB | Reference-able depth vs. bookmark pile |
@@ -977,7 +975,7 @@ These patterns appear across multiple systems. Worth recognizing as a personal m
 | **DESIGN.md as design contract** | Website builds, Zenkai | AI tools know design intent before writing code |
 | **Delta sync** | Zenkai, YouTube Summarizer (cache versioning) | Cost-efficient content/cache regeneration |
 | **Session close = commit** | edge_lab | Automatic versioning without manual git discipline |
-| **Phase-based workflows** | mariana-interview, website builds | Structured execution that mirrors real-world constraints |
+| **Phase-based workflows** | PRD system, website builds | Structured execution that mirrors real-world constraints |
 | **Layered README index hierarchy** | AI-Knowledgebase | Agent (or human) orients at any depth without being told what to read |
 | **Dynamic index generation** | edge_lab (journal/INDEX.md) | Index always accurate — rebuilt from source, never manually maintained |
 | **Mandatory-first-read index** | edge_lab (playbook/README.md) | Enforced routing — never open sub-files without reading the index first |
