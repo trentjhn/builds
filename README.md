@@ -36,7 +36,7 @@ Point it at a company and it generates a board-ready post-quantum-cryptography d
 - 27 passing tests, rate-limited generation endpoint, server-side-only key. Built and deployed in about a day.
 
 ### GitRecap
-**Live on Vercel** · **Repo:** `gitrecap` (private) · TypeScript
+**Live (access-gated):** https://gitrecap-gamma.vercel.app · **Repo:** [`gitrecap`](https://github.com/trentjhn/gitrecap) (public) · TypeScript
 
 A phone-first web app that reconstructs what you actually did each day from your GitHub commits and turns it into a readable narrative, so you can see your own work instead of forgetting it.
 
@@ -44,12 +44,12 @@ A phone-first web app that reconstructs what you actually did each day from your
 - Idempotent commit syncing, auth-gated, security headers verified, 71 tests. A real shipped product, not a demo.
 
 ### Government Relations Intelligence Dashboard
-**Live, fully autonomous** (GitHub Actions cron, 6:30am PT daily) · public pipeline repo + private dashboard repo
+**Live, fully autonomous** (GitHub Actions cron, 6:30am PT daily) · [gov.signalworks.live](https://gov.signalworks.live) · private (client work)
 
 A pre-7am governance briefing for a public-affairs operator with three concurrent roles. Five public meeting and legislation sources are scraped, diffed against yesterday, summarized through a hallucination gate, and published as a static dashboard before they open their laptop. No inbox, no triage.
 
 - **Two-layer hallucination gate (verbatim substring + spaCy NER).** The model can't author a fact sentence; `display_text` must be a verbatim span from the source, and every named entity in the headline must appear in that span (with tolerance for rounded dollar figures). Fabricated bill numbers and dollar amounts are structurally impossible, which is the whole reason a stakeholder trusts it.
-- **State lives in a separate private repo from the public pipeline,** so the pipeline is portfolio-public without leaking who's being monitored, and a rollback is `git revert`, not state surgery.
+- **State lives in a separate repo from the pipeline,** so the live brief never leaks who's being monitored, and a rollback is `git revert`, not state surgery.
 - **Three-state source semantics** (`active` / `quiet` / `degraded`) let the operator tell "nothing happened today" from "the system is broken" at a glance.
 
 ### AI Search Visibility Tracker
@@ -97,7 +97,7 @@ A meta-system whose output is other systems. `/cook` runs a 9-phase interactive 
 ### AI-Knowledgebase
 **Live, continuously growing** · `AI-Knowledgebase` (private)
 
-A practitioner-depth reference library distilling 100+ primary sources across AI engineering (prompting, context engineering, agentic systems, evaluation, security), plus the playbooks and catalogs `/cook` draws from. Distillation, not aggregation: each doc synthesizes 10-20 sources into one readable reference with a four-level README cascade so an agent dropped into the repo can orient itself without being told anything.
+A practitioner-depth reference library: 14+ synthesis docs distilling 100+ primary sources across AI engineering (prompting, context engineering, agentic systems, evaluation, fine-tuning, security), plus the playbooks and catalogs `/cook` draws from. Distillation, not aggregation: each doc synthesizes 10-20 sources into one readable reference with a four-level README cascade so an agent dropped into the repo can orient itself without being told anything.
 
 ### quantum-arxiv-digest
 **Public, clone-and-run** · **Repo:** [`quantum-arxiv-digest`](https://github.com/trentjhn/quantum-arxiv-digest) · Python CLI
