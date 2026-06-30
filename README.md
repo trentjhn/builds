@@ -2,9 +2,9 @@
 
 Production AI systems I've designed and shipped, the architecture decisions behind them, and the through-line that connects them.
 
-I'm a product builder (ex-PayPal technical PM) who builds AI-native systems fast. The speed isn't luck: most of these run on a personal harness I built, a config-as-code pattern where the agent's behavior, state, and tools all live in files, plus a project scaffolder (`/cook`) that encodes the architecture decisions from every prior build. New systems start from accumulated judgment instead of from scratch. That's why "built it in a day" shows up a lot below.
+I'm an AI product engineer and ex-PayPal technical PM who builds AI-native systems fast. The speed isn't luck: most of these run on a personal harness I built, a config-as-code pattern where the agent's behavior, state, and tools all live in files, plus a project scaffolder (`/cook`) that encodes the architecture decisions from every prior build. New systems start from accumulated judgment instead of from scratch. That's why "built it in a day" shows up a lot below.
 
-Repos are linked where public. A few are private (client work or live products); those are marked.
+Repos are linked where public. A few are private (client work, active ventures, or personal infrastructure); those are marked.
 
 ---
 
@@ -22,9 +22,33 @@ The agent's behavior lives in files, not chat memory. Sessions reload state from
 
 ---
 
+## Flagship builds
+
+The deepest engineering. Code is private (active venture / personal infrastructure); the architecture is described here.
+
+### GridVision — computer-vision football film-analysis pipeline
+**Private (active venture)** · Python, PyTorch
+
+A pipeline that breaks down football practice film: it detects every player on the field, tracks them across the play, and turns that into a per-play breakdown a coach can review.
+
+- **Fine-tuned RF-DETR (4 trained checkpoints)** for player detection, with **BoT-SORT multi-object tracking** on top. The engineering target is the hardest CV problem in the domain: dense line-of-scrimmage clusters where identical jerseys defeat naive re-identification.
+- **The MLOps is the point.** A **TrackEval HOTA/MOTA/IDF1 evaluation harness** measures tracking quality honestly (HOTA over raw MOTA because it separates detection from association error), and a **champion-challenger promotion gate** fingerprints the label set and promotes a new model only on strict, measured improvement, so the pipeline can't silently regress.
+- 261 tests. Applied and integration ML, built on fine-tuning and tracking research rather than from-scratch model architecture.
+
+### Hermes — agent stack with executable safety
+**Private (personal infrastructure)** · Python
+
+A framework-free agent stack I hand-rolled to understand tool use from primitives, with safety built in as code rather than as a prompt instruction.
+
+- **Client-side tool-use loop** driven by a `stop_reason` state machine, with a **three-axis spend guard** (per-call, per-session, per-day) checked on every model call.
+- **An executable safety floor:** an **SSRF defense** that catches the IPv6-embedded-IPv4 bypass class, **indirect-prompt-injection defenses** (taint and provenance tracking plus nonce spotlighting of untrusted content), and **grounding gates that cite a source or refuse**.
+- **Architected for testability:** the full loop verifies with no network. 263 tests. A companion safety plugin (`hermes-operator`, 39 tests) reverse-engineers the same floor onto a third-party agent framework.
+
+---
+
 ## Shipped and live
 
-The ones you can click and watch work, or that run unattended in production.
+The ones you can click and watch work, or that run unattended in production. Roughly most-to-least involved.
 
 ### PQC Deal Engine
 **Live:** https://pqc-deal-engine.vercel.app/ · **Repo:** [`pqc-deal-engine`](https://github.com/trentjhn/pqc-deal-engine) (public) · Next.js + TypeScript on Vercel
@@ -34,14 +58,6 @@ Point it at a company and it generates a board-ready post-quantum-cryptography d
 - **Facts can't be hallucinated.** Every regulatory date and algorithm name comes from a versioned data file, never the model's memory. A grounding gate scans each generated readout and rejects any year or standard not in that file, failing closed rather than shipping an invented fact. Even a tampered share link rebuilds the facts server-side.
 - **The risk math is deterministic code, not the LLM.** The Mosca score is a pure, tested function; the model only writes prose around a precomputed verdict.
 - 27 passing tests, rate-limited generation endpoint, server-side-only key. Built and deployed in about a day.
-
-### GitRecap
-**Live (access-gated):** https://gitrecap-gamma.vercel.app · **Repo:** [`gitrecap`](https://github.com/trentjhn/gitrecap) (public) · TypeScript
-
-A phone-first web app that reconstructs what you actually did each day from your GitHub commits and turns it into a readable narrative, so you can see your own work instead of forgetting it.
-
-- **Cost-near-zero caching:** the past is frozen and cached, only the live present is recomputed, so the app runs at almost no API spend.
-- Idempotent commit syncing, auth-gated, security headers verified, 71 tests. A real shipped product, not a demo.
 
 ### Government Relations Intelligence Dashboard
 **Live, fully autonomous** (GitHub Actions cron, 6:30am PT daily) · [gov.signalworks.live](https://gov.signalworks.live) · private (client work)
@@ -61,15 +77,6 @@ Measures how brands surface inside AI answer engines (ChatGPT, Claude, Gemini, e
 - **Extraction decoupled from querying** (separate pg-boss jobs, `temperature: 0`, Zod-enforced schema), so a prompt revision re-runs extraction without re-paying for engine calls.
 - **Cost ceiling enforced at boot** via env var; a bad prompt bank can't silently burn the budget.
 
-### YouTube Summarizer Premium
-**Production-deployed** · `youtube-summarizer-premium` (private) · React/Vite + Flask + Postgres
-
-Full-stack AI SaaS that turns long videos into structured intelligence with dual-depth summaries, context-aware chat, auth, and Stripe billing.
-
-- **Model migration as economics, not novelty:** moved GPT-4o-mini to Gemini 2.5 Flash-Lite for a 33% cost cut and an 8x larger context window, which eliminates video chunking (and the lost-narrative problem) for 99%+ of videos.
-- **Residential-proxy extraction:** YouTube blocks all datacenter and cloud IPs; the documented insight is that datacenter proxies are *also* blocked, so rotating residential IPs are the only reliable path from a cloud backend.
-- Three-method extraction with graceful fallback, keep-warm health pings, prompt-version cache invalidation.
-
 ### Viridian
 **Live** (core phases shipped) · **Repo:** [`viridian`](https://github.com/trentjhn/viridian) (public) · Go, single static binary (`vir`)
 
@@ -78,6 +85,23 @@ A terminal UI that watches Claude Code sessions in real time, tool calls, token 
 - **fsnotify on the parent directory, not the DB file:** SQLite atomically replaces files during journal cleanup, invalidating the inode, so watching the file directly breaks; watching the parent dir and filtering by name survives it, with a 30ms debounce for sub-100ms latency.
 - **Hooks must never raise:** a non-zero exit on a PreToolUse hook blocks *all* Claude Code tool execution, so every hook is a strictly append-only logger wrapped to always exit 0. The only safe contract when you don't own the host.
 - **`vir init` merges into `~/.claude/settings.json`** idempotently instead of overwriting, so other tools' hooks survive.
+
+### GitRecap
+**Live (access-gated):** https://gitrecap-gamma.vercel.app · **Repo:** [`gitrecap`](https://github.com/trentjhn/gitrecap) (public) · TypeScript
+
+A phone-first web app that reconstructs what you actually did each day from your GitHub commits and turns it into a readable narrative, so you can see your own work instead of forgetting it.
+
+- **Cost-near-zero caching:** the past is frozen and cached, only the live present is recomputed, so the app runs at almost no API spend.
+- Idempotent commit syncing, auth-gated, security headers verified, 71 tests. A real shipped product, not a demo.
+
+### YouTube Summarizer Premium
+**Production-deployed** · `youtube-summarizer-premium` (private) · React/Vite + Flask + Postgres
+
+Full-stack AI SaaS that turns long videos into structured intelligence with dual-depth summaries, context-aware chat, auth, and Stripe billing.
+
+- **Model migration as economics, not novelty:** moved GPT-4o-mini to Gemini 2.5 Flash-Lite for a 33% cost cut and an 8x larger context window, which eliminates video chunking (and the lost-narrative problem) for 99%+ of videos.
+- **Residential-proxy extraction:** YouTube blocks all datacenter and cloud IPs; the documented insight is that datacenter proxies are *also* blocked, so rotating residential IPs are the only reliable path from a cloud backend.
+- Three-method extraction with graceful fallback, keep-warm health pings, prompt-version cache invalidation.
 
 ---
 
@@ -122,9 +146,9 @@ Smaller or single-user builds. Useful, but not the headline.
 
 - **edge_lab** — a session-aware swing-trading analyst that enforces my own framework at every decision (macro alignment, position sizing, journal-similarity matching) and offloads all math to tested Python scripts (`calc.py`), because LLM arithmetic compounds errors in long sessions. Dual-AI portable (CLAUDE.md + GEMINI.md). Private.
 - **Domain-Specialized PRD System** — a config-as-code PRD generator for specialized industrial domains. Enforces domain-correct vocabulary as hard constraints (no DAU/MAU in mining software; recovery rate and cost per ton instead) so the output solves the right problem instead of looking professional while missing the domain. Runs a frame, build, stress-test (premortem) session.
-- **interview-prep — Job Search OS** — a file-based CRM for a multi-track job search: 27 company folders as atomic context units, STAR stories, session logs as institutional memory, all outreach run through a voice skill. The CLAUDE.md doubles as live pipeline state. Private.
+- **Parking Lead-Gen Agent** — a Python CLI that turns a parking-garage address into a ranked, contact-enriched advertiser list for about ten cents a run. Replayable stage-by-stage from disk, two-layer budget guard, CSV formula-injection guard at the export boundary. Real measured cost data in a spend ledger. Delivered to a marketing client (billed runs). Private.
+- **interview-prep — Job Search OS** — a file-based CRM for a multi-track job search: company folders as atomic context units, STAR stories, session logs as institutional memory, all outreach run through a voice skill. The CLAUDE.md doubles as live pipeline state. Private.
 - **Zenkai** — a local web app that turns the knowledge base into a spaced-repetition learning experience (React + FastAPI). Delta-syncs against KB file hashes so it only regenerates quiz content for files that changed. [`zenkai`](https://github.com/trentjhn/zenkai), functional.
-- **Parking Lead-Gen Agent** — a Python CLI that turns a parking-garage address into a ranked, contact-enriched advertiser list for about ten cents a run. Replayable stage-by-stage from disk, two-layer budget guard, CSV formula-injection guard at the export boundary. Real measured cost data in a spend ledger. Private.
 
 ---
 
@@ -134,6 +158,7 @@ The patterns worth naming, because they recur on purpose:
 
 - **Context as files** — state lives on disk, sessions are stateless by design. The files are the memory.
 - **Grounding gates** — the model is forbidden from authoring load-bearing facts (dates, money, bill numbers, algorithm names); they're injected and verified, so a confident output can't be a wrong one.
+- **Eval-driven promotion** — a model or capability ships only when a harness measures strict improvement over the incumbent (HOTA/MOTA for tracking, regression gates elsewhere), so nothing regresses silently.
 - **Math offloaded to deterministic code** — anything that has to be exact (risk scores, position sizing) runs in tested Python, never in the model.
 - **Decouple expensive stages** — separate the API call from the processing so a downstream tweak doesn't re-pay the upstream cost.
 - **Cost discipline as a first-class feature** — boot-time cost ceilings, budget guards, keep-warm strategies, model choice driven by economics.
