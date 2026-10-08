@@ -1,166 +1,157 @@
 # Builds
 
-Production AI systems I've designed and shipped, the architecture decisions behind them, and the through-line that connects them.
+I'm Trenton (TJ) Johnson: Yale CS, nearly two years as a technical PM at PayPal, now co-founder of SignalWorks, an AI consultancy that deploys into the customer's environment and stays through adoption. I build with Claude Code every day, and most of what I build is agent infrastructure: giving agents the right context, hard limits, and an honest definition of done.
 
-I'm an AI product engineer and ex-PayPal technical PM who builds AI-native systems fast. The speed isn't luck: most of these run on a personal harness I built, a config-as-code pattern where the agent's behavior, state, and tools all live in files, plus a project scaffolder (`/cook`) that encodes the architecture decisions from every prior build. New systems start from accumulated judgment instead of from scratch. That's why "built it in a day" shows up a lot below.
-
-Repos are linked where public. A few are private (client work, active ventures, or personal infrastructure); those are marked.
+Public repos are linked. Most of my best work is private (client work, active ventures, personal infrastructure), so those entries are marked and described here instead.
 
 ---
 
-## The pattern running through all of it
+## Agent infrastructure
 
-```
-CLAUDE.md (behavioral contract)
-  + context/ (live state as files)
-  + scripts/ or templates/ (tools)
-  + git (persistence + history)
-  = a self-contained, stateless-by-design AI system
-```
+### the-lobby
+**Private** · TypeScript, Node, SQLite
 
-The agent's behavior lives in files, not chat memory. Sessions reload state from disk, so nothing depends on a conversation staying alive. The same pattern carries across trading, government intelligence, lead-gen, and project scaffolding. A second recurring move: **grounding gates**, the model is structurally forbidden from inventing the facts that matter (dates, dollar figures, algorithm names), so a slick output can't ship a wrong number.
+A task queue that runs headless Claude Code agents against real open work across my repos, with a local web UI where I veto tasks, answer agents' questions, and review results. 126 commits between Aug 8 and Aug 16, 2026.
+
+- **One writer.** A daemon is the only process that writes the SQLite queue. The scanner, the agent runs, and the UI send it intents. On restart it adopts runs left orphaned and kills provable crash survivors.
+- **Trust lives in credentials, not prompts.** Each agent works in its own git worktree whose remote is a local mirror, so it has nothing to push with. Only the daemon holds GitHub credentials, and it pushes only when the repo's trust tier allows (11 repos, 4 tiers from autonomous push to propose only). Text scanned from repos fills a fixed task template and never chooses the actions.
+- **Budgets are enforced, not reported.** 150 turns and 45 minutes per task by default, one active task per repo. The turn default started at 50 and was raised after the first real run showed 50 starved real work. Over budget: graceful stop, a work-in-progress commit, then a hard kill, with the worktree kept for review.
+- **Done means three outside signals agree.** The run reached a terminal state, the deliverable exists, and the task's own check passes. Never the exit code, never the agent's word, and no LLM judge anywhere in that path.
+
+### My Claude Code harness: a hand-built context layer for one person
+**Private** · Markdown skills, Python hooks
+
+Everything I know about how I work, what I decided, and what happened in past sessions, kept in files and fed back to the agent at the right moment.
+
+- **64 skills.** Reusable workflows the agent loads by trigger phrase: premortem, fresh-context review, compliance check, deploy gate, a voice guide for anything a person will read.
+- **10 hooks across 5 lifecycle events.** One dispatcher fans each prompt out to six checks in a single process. A guard blocks irreversible shell commands on unattended runs. A stop hook writes build state to disk on each new commit, so the next session starts where this one ended.
+- **Memory that surfaces itself.** 274 memory notes across 76 projects. A per-prompt hook matches the prompt against them (a word index plus local embeddings) and injects the relevant note unasked. A recall skill searches every past session transcript and returns the sessions, dates, and snippets where a topic came up.
+- **/cook and /serve.** `/cook` scaffolds a project from my knowledge base: spec, design decisions, threat model, agent roles, step plan. `/serve` executes that plan autonomously, with review depth set by each step's risk, a pause list for irreversible actions (force push, production deploy, sending email), and hard caps on wall time and iterations. the-lobby, GridVision, and Hermes all started from `/cook`.
+
+### Field deployment: an agent platform for state government
+**Client work, no public code** · Aug 31 to Sep 4, 2026
+
+A five-day contract deployment at an AI agent platform for state government. I worked in the field with agency customers and in the product codebase.
+
+- **Found the skills layer was close to undiscoverable.** 52% of a 256-skill library had never been invoked in 90 days. The likely cause, which I handed forward as a hypothesis: catalog skills failed to resolve in the loader while personal skills loaded fine, so users got "unknown skill" and stopped trying.
+- **Took it from data to merged code.** Six tickets, then 24 pull requests, 16 merged that week: the loader fix, a daily resolver health check that monitors catalog and loader parity, and a repair detector that flags failing skills for review behind a kill switch.
+- **Corrected the adoption metric.** Machine-generated sessions were counted as human usage. Filtering them out moved the one-turn rate from 57.6% to 42.7%, so every number built on the old figure had understated real engagement.
+
+---
+
+## Client systems (SignalWorks)
+
+### Employee handbook compliance system
+**Client work, private** · JavaScript, Cloudflare Workers, D1 (SQLite)
+
+For an HR consultancy that maintains employee handbooks for its client companies (79 on the live roster). It watches employment law, matches each handbook section against the firm's approved policy library, flags where a handbook has drifted, and drafts a redline that cites the law that changed. New language comes from the firm's approved library, never from the model's reading of the law.
+
+- **Live today.** An alert pipeline polls 24 free law sources (22 enabled) across California, city, and federal law, and a dashboard sits behind Cloudflare Access with default-deny roles. A comparison engine makes one pinned model call per section to separate material from cosmetic differences. Every call is journaled, so a replay rebuilds the same rows with zero provider calls. 687 tests, no network calls.
+- **In build: the review and release workflow.** Phase 4 is 23 of 103 plan steps complete as of Oct 8, 2026. The schema adds document versions and sections, review items, approvals that only a named principal can sign, releases, and a compliance event log. States only move forward. History tables refuse updates and deletes at the database layer, and the only delete path is a per-client deletion that leaves a certificate. Triggers refuse links between one client's records and another's.
+- **Verification is mechanical.** Every step gets a fresh-context review, and high-risk steps get two: one against the spec, one on side effects and failure paths. A mutation gate plants faults to prove the tests catch them. Tests also pin platform limits the local engine doesn't enforce, such as D1 rejecting LIKE patterns over 50 bytes.
+
+### Commercial mortgage refinance leads
+**Client work, private** · Python, SEC loan data, Claude Code agents
+
+For a commercial mortgage broker: find California commercial loans maturing in 2027 that are likely refinance candidates, then find a way to reach each owner.
+
+- **Screening from SEC filings.** Securitized commercial loans report loan-level data to the SEC every month, including maturity, payment, and property income. The first pass read 311 bond trusts and 23,022 loans. The current list is 85 loans in the broker's deal band maturing 6 to 12 months out, and 30 of them can't refinance their full balance at 7.5% on reported income.
+- **Owners from the filings, private loans from county records.** Guarantor and sponsor fields name the owner on most securitized loans. Private and bridge loans never reach the SEC, so they come from county recorder deeds and indexes: 9 more in band and due in the window, from free sources only. Agents search only indexes open without a click; accepting a site's terms is left to a person.
+- **A contact counts only after it's tested.** Each email goes through two delivery-test services, needs a source tying it to the property, and is checked against people who have left. A ledger keeps every result, so no owner is researched or tested twice. The owner is reachable on 66 of the 85 so far (33 by email, 33 by phone).
+- **Every number is recomputed.** Rebuilding from the September filings caught a field-selection bug that understated payments on 28 loans whose interest-only period had ended. A fresh-context pass rechecked every figure before the client saw it.
 
 ---
 
 ## Flagship builds
 
-The deepest engineering. Code is private (active venture / personal infrastructure); the architecture is described here.
+### GridVision
+**Private (active venture)** · Python, PyTorch, RF-DETR
 
-### GridVision — computer-vision football film-analysis pipeline
-**Private (active venture)** · Python, PyTorch
+Computer vision that turns raw football film into a charted play: backfield, personnel, receiver distribution, and strength at the snap. A coach corrects the output with a few taps, and the corrections become training data.
 
-A pipeline that breaks down football practice film: it detects every player on the field, tracks them across the play, and turns that into a per-play breakdown a coach can review.
+- **Assisted first, because the data says so.** Detection works off the shelf. Separating players from the sideline crowd does not. With a person drawing boundary lines and tapping the QB, player admission scores 0.95 to 0.98 precision and 0.88 to 0.93 recall on two film sources, against a bar of 0.70 and 0.85. The fully automatic path still fails on sideline crowd, and that is the open problem.
+- **Confident and wrong is the fatal error.** Every chart read is scored by a pre-registered criterion against 47 hand-charted reps (188 cells across 4 videos). The system may abstain or flag a likely miss, but confident-wrong cells must stay at zero, and they do.
+- **A number decides promotion.** A TrackEval gate (HOTA against the current champion) promotes a model only on strict improvement, with separate exit codes for regression, missing ground truth, and infrastructure failure. The tracking and fine-tune stages it guards are designed but not yet the active layer. 678 tests.
+- **Coach-labeled film is next.** A junior college staff handed me 13 games of archive film, cut into one clip per play in two angles, with their own per-play breakdown sheets (formation, front, blitz, coverage). Their tags become the ground truth the chart read is scored against.
 
-- **Fine-tuned RF-DETR (4 trained checkpoints)** for player detection, with **BoT-SORT multi-object tracking** on top. The engineering target is the hardest CV problem in the domain: dense line-of-scrimmage clusters where identical jerseys defeat naive re-identification.
-- **The MLOps is the point.** A **TrackEval HOTA/MOTA/IDF1 evaluation harness** measures tracking quality honestly (HOTA over raw MOTA because it separates detection from association error), and a **champion-challenger promotion gate** fingerprints the label set and promotes a new model only on strict, measured improvement, so the pipeline can't silently regress.
-- 261 tests. Applied and integration ML, built on fine-tuning and tracking research rather than from-scratch model architecture.
-
-### Hermes — agent stack with executable safety
+### Hermes
 **Private (personal infrastructure)** · Python
 
-A framework-free agent stack I hand-rolled to understand tool use from primitives, with safety built in as code rather than as a prompt instruction.
+A framework-free agent stack I wrote to understand tool use from primitives. It runs as two read-only Telegram bots on a small server: one drafts posts from my notes, one challenges my thinking with live research.
 
-- **Client-side tool-use loop** driven by a `stop_reason` state machine, with a **three-axis spend guard** (per-call, per-session, per-day) checked on every model call.
-- **An executable safety floor:** an **SSRF defense** that catches the IPv6-embedded-IPv4 bypass class, **indirect-prompt-injection defenses** (taint and provenance tracking plus nonce spotlighting of untrusted content), and **grounding gates that cite a source or refuse**.
-- **Architected for testability:** the full loop verifies with no network. 263 tests. A companion safety plugin (`hermes-operator`, 39 tests) reverse-engineers the same floor onto a third-party agent framework.
+- **Client-side tool-use loop** driven by the model's stop reason, with a spend guard on three axes: per call, per run, and per day.
+- **SSRF gate** that rejects private addresses even when an IPv4 address hides inside an IPv6 one (mapped, 6to4, IPv4-compatible, NAT64).
+- **Injection defenses as code.** Untrusted content gets taint tracking and a fence with a one-time random nonce, so injected text cannot forge the closing tag and pass as instructions.
+- 292 tests. A companion plugin, `hermes-operator`, retrofits the same safety floor onto a third-party agent framework.
 
 ---
 
-## Shipped and live
+## Edge Lab
+**Private** · Python, Claude Code
 
-The ones you can click and watch work, or that run unattended in production. Roughly most-to-least involved.
+My personal trading analyst, used daily. Claude reads my written framework, current context, and journal, then stress-tests an idea against my own rules instead of agreeing with it. 715 commits since March 2026, 395 tests.
+
+- **Numbers never come from the model.** All math runs in tested scripts. Price levels are computed from two independent data sources and labeled agree, single-source, or disagree. A disagreeing level is never quoted.
+- **Every statistic carries its evidence.** A deterministic analysis script returns each measured figure with its sample size, effective sample size, and confidence interval. When the evidence is too thin, the value is absent rather than shown with a warning.
+- **Gates run before any analysis.** Three checks: the written plan matches the broker (read-only connection), every open position has a written plan, and the append-only journal matches reality. A gate that cannot judge exits differently from one that finds problems.
+- **Predictions are scored, not remembered.** The agent drafts each call and I ratify it, with a mechanical condition that settles it. Calls are scored separately on level, calibration, timing, and direction, never averaged into one hit rate.
+
+---
+
+## Shipped
 
 ### PQC Deal Engine
-**Live:** https://pqc-deal-engine.vercel.app/ · **Repo:** [`pqc-deal-engine`](https://github.com/trentjhn/pqc-deal-engine) (public) · Next.js + TypeScript on Vercel
+**Live:** https://pqc-deal-engine.vercel.app/ · **Repo:** [`pqc-deal-engine`](https://github.com/trentjhn/pqc-deal-engine) · Next.js, TypeScript
 
-Point it at a company and it generates a board-ready post-quantum-cryptography deal readout: their "harvest now, decrypt later" risk (quantified with the Mosca inequality), the exact regulatory deadlines their vertical faces, a NIST-suite migration sketch, and a CISO one-pager. It's the go-to-market translation layer on top of a crypto scan, not a scanner.
+Point it at a company and it generates a board-ready post-quantum cryptography readout: "harvest now, decrypt later" risk, the regulatory deadlines its industry faces, a migration sketch, and a CISO one-pager.
 
-- **Facts can't be hallucinated.** Every regulatory date and algorithm name comes from a versioned data file, never the model's memory. A grounding gate scans each generated readout and rejects any year or standard not in that file, failing closed rather than shipping an invented fact. Even a tampered share link rebuilds the facts server-side.
-- **The risk math is deterministic code, not the LLM.** The Mosca score is a pure, tested function; the model only writes prose around a precomputed verdict.
-- 27 passing tests, rate-limited generation endpoint, server-side-only key. Built and deployed in about a day.
+- **Facts can't be invented.** Every regulatory date and algorithm name comes from a versioned data file. A grounding gate rejects any year or standard in the output that isn't in that file, and fails closed.
+- **The risk math is code.** The Mosca score is a pure, tested function. The model only writes prose around a verdict that was already computed.
+- 27 tests, rate-limited generation, server-side key. Built and deployed in about a day.
 
 ### Government Relations Intelligence Dashboard
-**Live, fully autonomous** (GitHub Actions cron, 6:30am PT daily) · [gov.signalworks.live](https://gov.signalworks.live) · private (client work)
+**Live:** [gov.signalworks.live](https://gov.signalworks.live) · private (client work) · Python, GitHub Actions
 
-A pre-7am governance briefing for a public-affairs operator with three concurrent roles. Five public meeting and legislation sources are scraped, diffed against yesterday, summarized through a hallucination gate, and published as a static dashboard before they open their laptop. No inbox, no triage.
+A governance briefing for a public-affairs operator. Eleven public government sources are scraped four times a day on weekdays, diffed against the last run, summarized through a hallucination gate, and published as a static dashboard.
 
-- **Two-layer hallucination gate (verbatim substring + spaCy NER).** The model can't author a fact sentence; `display_text` must be a verbatim span from the source, and every named entity in the headline must appear in that span (with tolerance for rounded dollar figures). Fabricated bill numbers and dollar amounts are structurally impossible, which is the whole reason a stakeholder trusts it.
-- **State lives in a separate repo from the pipeline,** so the live brief never leaks who's being monitored, and a rollback is `git revert`, not state surgery.
-- **Three-state source semantics** (`active` / `quiet` / `degraded`) let the operator tell "nothing happened today" from "the system is broken" at a glance.
+- **Two-layer hallucination gate.** Displayed text must be a verbatim span from the source, and every named entity in the headline must appear in that span. The model cannot author a bill number or a dollar figure.
+- **State lives in a separate repo from the pipeline**, so the published brief never reveals who is being monitored, and a rollback is a `git revert`.
+- **Three source states** (active, quiet, degraded) tell "nothing happened today" apart from "a scraper broke."
+
+### MLB All-Star Aggregator
+**Repo:** [`blitz-mlb-allstar`](https://github.com/trentjhn/blitz-mlb-allstar) · Python, static site
+
+Scrapes Baseball Reference, builds a validated dataset of the 2024 to 2026 MLB All-Stars (260 rows for 177 players), joins it to a video game's top-100 player ratings, and serves it as a local site.
+
+- **The build refuses to write bad data.** Unique keys, 30 teams per season, allowed values, and a reconciliation of every season against the full All-Star rosters. Any failure means nothing is written. A name that fits two players stops the build rather than guess.
+- **Polite, reproducible scraping.** At most one request every 4 seconds, a hard stop and a block marker on a 403 or 429, and all 274 fetched pages cached with SHA-256 checks, so a fresh clone builds with no network.
+- **Disagreements are documented, not smoothed over.** Where the reference output and the source pages differ, the data follows the pages and the README lists each case. 211 test functions run offline against the cached pages.
 
 ### AI Search Visibility Tracker
-**Live** (one founder-led brand pilot, baseline complete) · private · Next.js 16 + Postgres + pg-boss
+**In use on SignalWorks engagements** · private · Next.js, Postgres
 
-Measures how brands surface inside AI answer engines (ChatGPT, Claude, Gemini, etc.) with statistical rigor instead of a single guess. Same prompt fans out across engines, runs N times, and reports per-prompt metrics the competitors don't publish.
-
-- **The math is the moat, and it's published.** Wilson 95% confidence intervals (correct for the near-0%/near-100% small-sample regime where the textbook formula returns nonsense), plus an AutoGEO impression-weighted GEO score hand-ported from the ICLR'26 paper and cited. Every competitor (Profound, Otterly, AthenaHQ) treats their scoring as proprietary; the `/methodology` page inverts the trust dynamic by showing the work.
-- **Extraction decoupled from querying** (separate pg-boss jobs, `temperature: 0`, Zod-enforced schema), so a prompt revision re-runs extraction without re-paying for engine calls.
-- **Cost ceiling enforced at boot** via env var; a bad prompt bank can't silently burn the budget.
+Measures how a brand shows up inside AI answer engines (ChatGPT, Claude, Perplexity, Gemini, Google AI Overviews) by running each prompt many times instead of trusting one answer. Results carry Wilson 95% confidence intervals, which stay correct near 0% and 100% on small samples, and extraction is decoupled from querying so a prompt change doesn't re-pay for engine calls.
 
 ### Viridian
-**Live** (core phases shipped) · **Repo:** [`viridian`](https://github.com/trentjhn/viridian) (public) · Go, single static binary (`vir`)
+**Repo:** [`viridian`](https://github.com/trentjhn/viridian) · Go, single binary
 
-A terminal UI that watches Claude Code sessions in real time, tool calls, token spend, session memory, and file diffs, via the host harness's hook system. It's a tool *about* the AI coding harness, not one built by it.
-
-- **fsnotify on the parent directory, not the DB file:** SQLite atomically replaces files during journal cleanup, invalidating the inode, so watching the file directly breaks; watching the parent dir and filtering by name survives it, with a 30ms debounce for sub-100ms latency.
-- **Hooks must never raise:** a non-zero exit on a PreToolUse hook blocks *all* Claude Code tool execution, so every hook is a strictly append-only logger wrapped to always exit 0. The only safe contract when you don't own the host.
-- **`vir init` merges into `~/.claude/settings.json`** idempotently instead of overwriting, so other tools' hooks survive.
+A terminal UI that watches Claude Code sessions in real time (tool calls, token spend, session memory, file diffs) through the harness's hook system. Every hook is an append-only logger that always exits 0, because a failing pre-tool hook would block every tool call in the host.
 
 ### GitRecap
-**Live (access-gated):** https://gitrecap-gamma.vercel.app · **Repo:** [`gitrecap`](https://github.com/trentjhn/gitrecap) (public) · TypeScript
+**Live (access-gated):** https://gitrecap-gamma.vercel.app · **Repo:** [`gitrecap`](https://github.com/trentjhn/gitrecap) · TypeScript
 
-A phone-first web app that reconstructs what you actually did each day from your GitHub commits and turns it into a readable narrative, so you can see your own work instead of forgetting it.
+A phone-first app that rebuilds what you did each day from your GitHub commits and writes it up as a readable narrative. Past days are cached once and never recomputed, so it runs at almost no API cost.
 
-- **Cost-near-zero caching:** the past is frozen and cached, only the live present is recomputed, so the app runs at almost no API spend.
-- Idempotent commit syncing, auth-gated, security headers verified, 71 tests. A real shipped product, not a demo.
-
-### YouTube Summarizer Premium
-**Production-deployed** · `youtube-summarizer-premium` (private) · React/Vite + Flask + Postgres
-
-Full-stack AI SaaS that turns long videos into structured intelligence with dual-depth summaries, context-aware chat, auth, and Stripe billing.
-
-- **Model migration as economics, not novelty:** moved GPT-4o-mini to Gemini 2.5 Flash-Lite for a 33% cost cut and an 8x larger context window, which eliminates video chunking (and the lost-narrative problem) for 99%+ of videos.
-- **Residential-proxy extraction:** YouTube blocks all datacenter and cloud IPs; the documented insight is that datacenter proxies are *also* blocked, so rotating residential IPs are the only reliable path from a cloud backend.
-- Three-method extraction with graceful fallback, keep-warm health pings, prompt-version cache invalidation.
+**Smaller public tools:** [`quantum-arxiv-digest`](https://github.com/trentjhn/quantum-arxiv-digest) (pulls and ranks quantum and post-quantum papers, runs with no API key), [`configkit`](https://github.com/trentjhn/configkit), [`promptarena`](https://github.com/trentjhn/promptarena), [`zenkai`](https://github.com/trentjhn/zenkai).
 
 ---
 
-## Infrastructure and tooling
+## How I build
 
-The harness and the reusable tools the rest is built on.
+Most of this runs on **AI-Knowledgebase** (private): a practitioner reference distilled from 100+ sources across prompting, context engineering, agent systems, evaluation, and security. `/cook` reads it to scaffold every new project. A few patterns recur on purpose:
 
-### Magnum Opus — the `/cook` project scaffolder
-**Live** (Claude Code skill) · part of the AI-Knowledgebase
-
-A meta-system whose output is other systems. `/cook` runs a 9-phase interactive workflow (intake, spec, harness design, capability selection, scaffold, eval baseline) and writes a complete, opinionated project structure to disk, encoding the ~40 architecture decisions every new AI project needs before the first line of code.
-
-- **Hub document as manual RAG:** the workflow routes to knowledge-base sections by path and line range but never copies their content, so updating the knowledge doesn't mean updating the workflow. Routing layer vs. content layer.
-- **Three-way topology choice** (single / hierarchical / agent-team) instead of a binary, because those have genuinely different context budgets and failure modes; collapsing them produces wrong architectures.
-- **Catalog-first convention:** the index entry is written before the thing it indexes, which structurally prevents stale catalogs.
-
-### AI-Knowledgebase
-**Live, continuously growing** · `AI-Knowledgebase` (private)
-
-A practitioner-depth reference library: 14+ synthesis docs distilling 100+ primary sources across AI engineering (prompting, context engineering, agentic systems, evaluation, fine-tuning, security), plus the playbooks and catalogs `/cook` draws from. Distillation, not aggregation: each doc synthesizes 10-20 sources into one readable reference with a four-level README cascade so an agent dropped into the repo can orient itself without being told anything.
-
-### quantum-arxiv-digest
-**Public, clone-and-run** · **Repo:** [`quantum-arxiv-digest`](https://github.com/trentjhn/quantum-arxiv-digest) · Python CLI
-
-Pulls the latest quantum, post-quantum-cryptography, and cryptography papers off arxiv into clean, browsable folders. Runs with no API key out of the box (fetch + organize); add a key and it also ranks every paper by relevance without discarding any. A sample run is committed under `examples/` so you can see the output without cloning.
-
-### configkit
-**Public** · **Repo:** [`configkit`](https://github.com/trentjhn/configkit) · JavaScript
-
-Generates expert-level LLM config files and skill packs from six plain-English questions. No account required.
-
-### promptarena
-**Public** · **Repo:** [`promptarena`](https://github.com/trentjhn/promptarena) · TypeScript
-
-Hands-on prompt-engineering practice with AI feedback, 15 scenarios from beginner (email tone) to advanced (meta-prompting, PRD generation).
-
----
-
-## Personal systems and experiments
-
-Smaller or single-user builds. Useful, but not the headline.
-
-- **edge_lab** — a session-aware swing-trading analyst that enforces my own framework at every decision (macro alignment, position sizing, journal-similarity matching) and offloads all math to tested Python scripts (`calc.py`), because LLM arithmetic compounds errors in long sessions. Dual-AI portable (CLAUDE.md + GEMINI.md). Private.
-- **Domain-Specialized PRD System** — a config-as-code PRD generator for specialized industrial domains. Enforces domain-correct vocabulary as hard constraints (no DAU/MAU in mining software; recovery rate and cost per ton instead) so the output solves the right problem instead of looking professional while missing the domain. Runs a frame, build, stress-test (premortem) session.
-- **Parking Lead-Gen Agent** — a Python CLI that turns a parking-garage address into a ranked, contact-enriched advertiser list for about ten cents a run. Replayable stage-by-stage from disk, two-layer budget guard, CSV formula-injection guard at the export boundary. Real measured cost data in a spend ledger. Delivered to a marketing client (billed runs). Private.
-- **interview-prep — Job Search OS** — a file-based CRM for a multi-track job search: company folders as atomic context units, STAR stories, session logs as institutional memory, all outreach run through a voice skill. The CLAUDE.md doubles as live pipeline state. Private.
-- **Zenkai** — a local web app that turns the knowledge base into a spaced-repetition learning experience (React + FastAPI). Delta-syncs against KB file hashes so it only regenerates quiz content for files that changed. [`zenkai`](https://github.com/trentjhn/zenkai), functional.
-
----
-
-## The methodology
-
-The patterns worth naming, because they recur on purpose:
-
-- **Context as files** — state lives on disk, sessions are stateless by design. The files are the memory.
-- **Grounding gates** — the model is forbidden from authoring load-bearing facts (dates, money, bill numbers, algorithm names); they're injected and verified, so a confident output can't be a wrong one.
-- **Eval-driven promotion** — a model or capability ships only when a harness measures strict improvement over the incumbent (HOTA/MOTA for tracking, regression gates elsewhere), so nothing regresses silently.
-- **Math offloaded to deterministic code** — anything that has to be exact (risk scores, position sizing) runs in tested Python, never in the model.
-- **Decouple expensive stages** — separate the API call from the processing so a downstream tweak doesn't re-pay the upstream cost.
-- **Cost discipline as a first-class feature** — boot-time cost ceilings, budget guards, keep-warm strategies, model choice driven by economics.
-- **Dual-AI portability** — the same behavioral contract across Claude and Gemini, so a tool-limit on one doesn't stall the work.
-- **Routing layer vs. content layer** — indexes and hub documents point to where knowledge lives instead of copying it, so the knowledge can change without breaking the navigation.
+- **Context as files.** Behavior, state, and decisions live on disk, so no session depends on a conversation staying alive.
+- **Grounding gates.** The model never authors a load-bearing fact (a date, a dollar figure, a bill number). Facts are injected and checked.
+- **Evals decide.** A model or feature ships only when a measured gate says it beat what it replaces.
+- **Exact math in code.** Risk scores, statistics, and sizing run in tested functions, never in the model.
+- **Trust in credentials, not instructions.** What an agent cannot do is enforced by what it holds, not by what it was told.
