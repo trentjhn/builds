@@ -11,7 +11,7 @@ Public repos are linked. Most of my best work is private (client work, active ve
 ### the-lobby
 **Private** · TypeScript, Node, SQLite
 
-A task queue that runs headless Claude Code agents against real open work across my repos, with a local web UI where I veto tasks, answer agents' questions, and review results. 126 commits between Aug 8 and Aug 16, 2026.
+A task queue that runs headless Claude Code agents against real open work across my repos, with a local web UI where I veto tasks, answer agents' questions, and review results.
 
 - **One writer.** A daemon is the only process that writes the SQLite queue. The scanner, the agent runs, and the UI send it intents. On restart it adopts runs left orphaned and kills provable crash survivors.
 - **Trust lives in credentials, not prompts.** Each agent works in its own git worktree whose remote is a local mirror, so it has nothing to push with. Only the daemon holds GitHub credentials, and it pushes only when the repo's trust tier allows (11 repos, 4 tiers from autonomous push to propose only). Text scanned from repos fills a fixed task template and never chooses the actions.
@@ -97,7 +97,7 @@ A framework-free agent stack I wrote to understand tool use from primitives. It 
 ## Edge Lab
 **Private** · Python, Claude Code
 
-My personal trading analyst, used daily. Claude reads my written framework, current context, and journal, then stress-tests an idea against my own rules instead of agreeing with it. 715 commits since March 2026, 395 tests.
+My personal trading analyst, used daily. Claude reads my written framework, current context, and journal, then stress-tests an idea against my own rules instead of agreeing with it.
 
 - **Numbers never come from the model.** All math runs in tested scripts. Price levels are computed from two independent data sources and labeled agree, single-source, or disagree. A disagreeing level is never quoted.
 - **Every statistic carries its evidence.** A deterministic analysis script returns each measured figure with its sample size, effective sample size, and confidence interval. When the evidence is too thin, the value is absent rather than shown with a warning.
