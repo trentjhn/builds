@@ -62,6 +62,14 @@ For a commercial mortgage broker: find California commercial loans maturing in 2
 
 ---
 
+### Parking lead generation
+**Client work, private** · Python CLI · delivered to a marketing client (billed runs)
+
+Turns a parking-garage address into a ranked, contact-enriched list of nearby businesses likely to advertise there, for about 5 to 15 cents a run.
+
+- **Staged and replayable.** Google Places discovery, then website scraping and Hunter.io enrichment, then scoring and export. Every stage writes its output to disk, so any stage can be rerun without paying for the ones before it.
+- **Safe at the edges.** A spend budget marks rows it couldn't afford to enrich instead of silently dropping them, and the CSV export guards against spreadsheet formula injection.
+
 ## Flagship builds
 
 ### GridVision
@@ -141,6 +149,15 @@ A terminal UI that watches Claude Code sessions in real time (tool calls, token 
 **Live (access-gated):** https://gitrecap-gamma.vercel.app · **Repo:** [`gitrecap`](https://github.com/trentjhn/gitrecap) · TypeScript
 
 A phone-first app that rebuilds what you did each day from your GitHub commits and writes it up as a readable narrative. Past days are cached once and never recomputed, so it runs at almost no API cost.
+
+### YouTube Summarizer Premium
+**Production-deployed** · private · React/Vite + Flask + Postgres
+
+Full-stack AI SaaS that turns long videos into structured summaries with two depth levels, context-aware chat, auth, and Stripe billing.
+
+- **Model migration as economics, not novelty.** Moved from GPT-4o-mini to Gemini 2.5 Flash-Lite for a 33% cost cut and an 8x larger context window, which removes video chunking (and the lost-narrative problem) for 99%+ of videos.
+- **Residential-proxy extraction.** YouTube blocks datacenter and cloud IPs, and datacenter proxies are blocked too, so rotating residential IPs are the only reliable path from a cloud backend.
+- Three extraction methods with graceful fallback, keep-warm health pings, and cache invalidation tied to the prompt version.
 
 **Smaller public tools:** [`quantum-arxiv-digest`](https://github.com/trentjhn/quantum-arxiv-digest) (pulls and ranks quantum and post-quantum papers, runs with no API key), [`configkit`](https://github.com/trentjhn/configkit), [`promptarena`](https://github.com/trentjhn/promptarena), [`zenkai`](https://github.com/trentjhn/zenkai).
 
